@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Area Top Up - Mobile Game Store</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .game-card {
+            transition: all 0.3s ease;
+            transform: translateY(0);
+        }
+        .game-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+        .gradient-text {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Mock Backend API
+        class MockAPI {
+            constructor() {
+                this.games = [
+                    { id: 1, name: "Diamond Mobile Legends", game: "MLBB", price: 10000, image: "🎮" },
+                    { id: 2, name: "UC PUBG", game: "PUBG Mobile", price: 15000, image: "🔫" },
+                    { id: 3, name: "Genesis Crystal", game: "Genshin Impact", price: 20000, image: "⚡" },
+                    { id: 4, name: "Valorant Point", game: "Valorant", price: 25000, image: "🎯" },
+                ];
+                this.orders = [];
+                this.admin = { email: "admin@areatopup.com", password: "admin123" };
+                this.secret = "secretjwt";
+            }
+
+            async getGames() {
+                return new Promise(resolve => {
+                    setTimeout(() => resolve(this.games), 500);
+                });
+            }
+
+            async checkout(orderData) {
+                return new Promise(resolve => {
+                    const { nama, metode, items } = orderData;
+                    const total = items.reduce((acc, item) => acc + item.price * (item.qty || 1), 0);
+                    const order = { 
+                        id: this.orders.length + 1,
+                        nama, 
+                        metode, 
+                        total, 
+                        items,
+                        created_at: new Date().toISOString()
+                    };
+                    this.orders.push(order);
+                    setTimeout(() => resolve({ message: "Pesanan berhasil", total, orderId: order.id }), 800);
+                });
+            }
+
+            async login(credentials) {
+                return new Promise((resolve, reject) => {
+                    const { email, password } = credentials;
+                    setTimeout(() => {
+                        if (email === this.admin.email && password === this.admin.password) {
+                            const token = btoa(JSON.stringify({ email, exp: Date.now() + 3600000 }));
+                            resolve({ token });
+                        } else {
+                            reject(new Error("Email atau password salah"));
+                        }
+                    }, 600);
+                });
+            }
+
+            async getOrders(token) {
+                return new Promise((resolve, reject) => {
+                    setTimeout(() => {
+                        try {
+                            const decoded = JSON.parse(atob(token));
+                            if (decoded.exp > Date.now()) {
+                                resolve(this.orders);
+                            } else {
+                                reject(new Error("Token expired"));
+                            }
+                        } catch {
+                            reject(new Error("Invalid token"));
+                        }
+                    }, 400);
+                });
+            }
+        }
+
+        const api = new MockAPI();
+
+        // Components
+        const Header = ({ cartCount, onCartClick, onLoginClick, isLoggedIn, onLogout }) => (
+            <header className="glass rounded-2xl mb-6 p-4 sticky top-4 z-50">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center space-x-3">
+                        <div className="text-3xl">🎮</div>
+                        <h1 className="text-2xl sm:text-3xl font-bold gradient-text">Area Top Up</h1>
+                    </div>
+                    <div className="flex items-center space-x-2 sm:space-x-4">
+                        <button 
+                            onClick={onCartClick}
+                            className="relative bg-white/20 hover:bg-white/30 px-3 sm:px-4 py-2 rounded-lg transition-all duration-300 text-white"
+                        >
+                            🛒 <span className="hidden sm:inline">Keranjang</span>
+                            {cartCount > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                                    {cartCount}
+                                </span>
+                            )}
+                        </button>
+                        {isLoggedIn ? (
+                            <button 
+                                onClick={onLogout}
+                                className="bg-red-500/80 hover:bg-red-600 px-3 sm:px-4 py-2 rounded-lg transition-all duration-300 text-white"
+                            >
+                                Logout
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={onLoginClick}
+                                className="bg-blue-500/80 hover:bg-blue-600 px-3 sm:px-4 py-2 rounded-lg transition-all duration-300 text-white"
+                            >
+                                Admin
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </header>
+        );
+
+        const GameCard = ({ game, onAddToCart }) => (
+            <div className="game-card glass rounded-2xl p-6 text-white">
+                <div className="text-center mb-4">
+                    <div className="text-4xl mb-3">{game.image}</div>
+                    <h3 className="font-bold text-lg mb-2">{game.name}</h3>
+                    <p className="text-sm opacity-75 mb-4">{game.game}</p>
+                </div>
+                <div className="text-center">
+                    <p className="text-2xl font-bold text-yellow-300 mb-4">
+                        Rp {game.price.toLocaleString('id-ID')}
+                    </p>
+                    <button 
+                        onClick={() => onAddToCart(game)}
+                        className="w-full bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600 px-4 py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105"
+                    >
+                        Tambah ke Keranjang
+                    </button>
+                </div>
+            </div>
+        );
+
+        const Cart = ({ items, onClose, onCheckout, onRemoveItem, onUpdateQty }) => {
+            const total = items.reduce((acc, item) => acc + item.price * item.qty, 0);
+            const [customerName, setCustomerName] = useState('');
+            const [paymentMethod, setPaymentMethod] = useState('');
+
+            const handleCheckout = () => {
+                if (!customerName.trim() || !paymentMethod) {
+                    alert('Mohon lengkapi data pemesanan!');
+                    return;
+                }
+                onCheckout({ nama: customerName, metode: paymentMethod, items });
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="glass rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 text-white">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold">Keranjang Belanja</h2>
+                                <button onClick={onClose} className="text-2xl hover:text-red-400">✕</button>
+                            </div>
+
+                            {items.length === 0 ? (
+                                <p className="text-center py-8 opacity-75">Keranjang kosong</p>
+                            ) : (
+                                <>
+                                    <div className="space-y-4 mb-6">
+                                        {items.map(item => (
+                                            <div key={item.id} className="flex justify-between items-center bg-white/10 p-4 rounded-lg">
+                                                <div className="flex-1">
+                                                    <h4 className="font-semibold">{item.name}</h4>
+                                                    <p className="text-yellow-300">Rp {item.price.toLocaleString('id-ID')}</p>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                    <button 
+                                                        onClick={() => onUpdateQty(item.id, Math.max(1, item.qty - 1))}
+                                                        className="bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full"
+                                                    >-</button>
+                                                    <span className="w-8 text-center">{item.qty}</span>
+                                                    <button 
+                                                        onClick={() => onUpdateQty(item.id, item.qty + 1)}
+                                                        className="bg-green-500 hover:bg-green-600 w-8 h-8 rounded-full"
+                                                    >+</button>
+                                                    <button 
+                                                        onClick={() => onRemoveItem(item.id)}
+                                                        className="ml-2 text-red-400 hover:text-red-300"
+                                                    >🗑️</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="border-t border-white/20 pt-4 mb-6">
+                                        <div className="flex justify-between text-xl font-bold">
+                                            <span>Total:</span>
+                                            <span className="text-yellow-300">Rp {total.toLocaleString('id-ID')}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <input
+                                            type="text"
+                                            placeholder="Nama Pemesan"
+                                            value={customerName}
+                                            onChange={(e) => setCustomerName(e.target.value)}
+                                            className="w-full bg-white/20 border border-white/30 rounded-lg px-4 py-3 text-white placeholder-white/60"
+                                        />
+                                        <select
+                                            value={paymentMethod}
+                                            onChange={(e) => setPaymentMethod(e.target.value)}
+                                            className="w-full bg-white/20 border border-white/30 rounded-lg px-4 py-3 text-white"
+                                        >
+                                            <option value="">Pilih Metode Pembayaran</option>
+                                            <option value="dana">DANA</option>
+                                            <option value="gopay">GoPay</option>
+                                            <option value="ovo">OVO</option>
+                                            <option value="bank">Transfer Bank</option>
+                                        </select>
+                                        <button 
+                                            onClick={handleCheckout}
+                                            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-6 py-3 rounded-lg font-semibold transition-all duration-300"
+                                        >
+                                            Checkout Sekarang
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Login = ({ onClose, onLogin }) => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                try {
+                    const result = await api.login({ email, password });
+                    onLogin(result.token);
+                    onClose();
+                } catch (error) {
+                    alert(error.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="glass rounded-2xl max-w-md w-full p-6 text-white">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold">Login Admin</h2>
+                            <button onClick={onClose} className="text-2xl hover:text-red-400">✕</button>
+                        </div>
+                        
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <input
+                                type="email"
+                                placeholder="Email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full bg-white/20 border border-white/30 rounded-lg px-4 py-3 text-white placeholder-white/60"
+                                required
+                            />
+                            <input
+                                type="password"
+                                placeholder="Password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-white/20 border border-white/30 rounded-lg px-4 py-3 text-white placeholder-white/60"
+                                required
+                            />
+                            <button 
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 px-6 py-3 rounded-lg font-semibold transition-all duration-300 disabled:opacity-50"
+                            >
+                                {loading ? 'Loading...' : 'Login'}
+                            </button>
+                        </form>
+                        
+                        <div className="mt-4 p-4 bg-white/10 rounded-lg">
+                            <p className="text-sm opacity-75">Demo credentials:</p>
+                            <p className="text-sm">Email: admin@areatopup.com</p>
+                            <p className="text-sm">Password: admin123</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminPanel = ({ token, onClose }) => {
+            const [orders, setOrders] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const fetchOrders = async () => {
+                    try {
+                        const orderData = await api.getOrders(token);
+                        setOrders(orderData);
+                    } catch (error) {
+                        alert('Error fetching orders: ' + error.message);
+                        onClose();
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                fetchOrders();
+            }, [token]);
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="glass rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 text-white">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold">Dashboard Admin</h2>
+                                <button onClick={onClose} className="text-2xl hover:text-red-400">✕</button>
+                            </div>
+
+                            {loading ? (
+                                <div className="text-center py-8">Loading...</div>
+                            ) : orders.length === 0 ? (
+                                <div className="text-center py-8 opacity-75">Belum ada pesanan</div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {orders.map(order => (
+                                        <div key={order.id} className="bg-white/10 p-4 rounded-lg">
+                                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                                                <div>
+                                                    <h4 className="font-semibold text-lg">{order.nama}</h4>
+                                                    <p className="text-sm opacity-75">Metode: {order.metode}</p>
+                                                    <p className="text-sm opacity-75">
+                                                        Tanggal: {new Date(order.created_at).toLocaleDateString('id-ID')}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-xl font-bold text-yellow-300">
+                                                        Rp {order.total.toLocaleString('id-ID')}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {order.items && (
+                                                <div className="mt-3 pt-3 border-t border-white/20">
+                                                    <p className="text-sm font-semibold mb-2">Items:</p>
+                                                    {order.items.map((item, idx) => (
+                                                        <div key={idx} className="text-sm opacity-75">
+                                                            {item.name} x{item.qty} - Rp {(item.price * item.qty).toLocaleString('id-ID')}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Main App Component
+        const App = () => {
+            const [games, setGames] = useState([]);
+            const [cart, setCart] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showCart, setShowCart] = useState(false);
+            const [showLogin, setShowLogin] = useState(false);
+            const [showAdmin, setShowAdmin] = useState(false);
+            const [authToken, setAuthToken] = useState(null);
+
+            useEffect(() => {
+                const loadGames = async () => {
+                    try {
+                        const gameData = await api.getGames();
+                        setGames(gameData);
+                    } catch (error) {
+                        console.error('Error loading games:', error);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                loadGames();
+            }, []);
+
+            const addToCart = (game) => {
+                setCart(prev => {
+                    const existing = prev.find(item => item.id === game.id);
+                    if (existing) {
+                        return prev.map(item => 
+                            item.id === game.id 
+                                ? { ...item, qty: item.qty + 1 }
+                                : item
+                        );
+                    }
+                    return [...prev, { ...game, qty: 1 }];
+                });
+            };
+
+            const removeFromCart = (id) => {
+                setCart(prev => prev.filter(item => item.id !== id));
+            };
+
+            const updateQuantity = (id, qty) => {
+                setCart(prev => prev.map(item => 
+                    item.id === id ? { ...item, qty } : item
+                ));
+            };
+
+            const handleCheckout = async (orderData) => {
+                try {
+                    const result = await api.checkout(orderData);
+                    alert(`${result.message}! Total: Rp ${result.total.toLocaleString('id-ID')}`);
+                    setCart([]);
+                    setShowCart(false);
+                } catch (error) {
+                    alert('Error during checkout: ' + error.message);
+                }
+            };
+
+            const handleLogin = (token) => {
+                setAuthToken(token);
+                setShowAdmin(true);
+            };
+
+            const handleLogout = () => {
+                setAuthToken(null);
+                setShowAdmin(false);
+            };
+
+            const cartCount = cart.reduce((acc, item) => acc + item.qty, 0);
+
+            return (
+                <div className="min-h-screen p-4">
+                    <div className="max-w-6xl mx-auto">
+                        <Header 
+                            cartCount={cartCount}
+                            onCartClick={() => setShowCart(true)}
+                            onLoginClick={() => setShowLogin(true)}
+                            isLoggedIn={!!authToken}
+                            onLogout={handleLogout}
+                        />
+
+                        {loading ? (
+                            <div className="text-center py-20">
+                                <div className="text-4xl mb-4">🎮</div>
+                                <div className="text-white text-xl">Loading games...</div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="text-center mb-8">
+                                    <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                                        Top Up Game Favorit Anda
+                                    </h2>
+                                    <p className="text-white/80 text-lg">
+                                        Dapatkan item premium dengan harga terbaik!
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {games.map(game => (
+                                        <GameCard 
+                                            key={game.id}
+                                            game={game}
+                                            onAddToCart={addToCart}
+                                        />
+                                    ))}
+                                </div>
+                            </>
+                        )}
+
+                        {showCart && (
+                            <Cart 
+                                items={cart}
+                                onClose={() => setShowCart(false)}
+                                onCheckout={handleCheckout}
+                                onRemoveItem={removeFromCart}
+                                onUpdateQty={updateQuantity}
+                            />
+                        )}
+
+                        {showLogin && (
+                            <Login 
+                                onClose={() => setShowLogin(false)}
+                                onLogin={handleLogin}
+                            />
+                        )}
+
+                        {showAdmin && authToken && (
+                            <AdminPanel 
+                                token={authToken}
+                                onClose={() => setShowAdmin(false)}
+                            />
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
